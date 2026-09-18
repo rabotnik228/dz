@@ -1,0 +1,259 @@
+#include <iostream>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <cmath>
+#include <cstdio>
+#include <algorithm>
+
+//Задача на пирамиды. Автор: Семченков Дмитрий 212 группа
+class Point { //создаем класс, описывающий точку
+private:
+    float x; //координаты точки
+    float y;
+
+public:
+    Point() : x(0.0f), y(0.0f) {}
+    Point(float x_, float y_) : x(x_), y(y_) {}
+    virtual ~Point() = default;
+    //функции для получения координат точки и соответсвенно для смены ее координат
+    float getX() const { return x; }
+    float getY() const { return y; }
+    void setX(float x_) { x = x_; }
+    void setY(float y_) { y = y_; }
+    //вывод координат точки
+    virtual void print() const {
+        std::cout << "Point(" << x << ", " << y << ")";
+    }
+};
+
+//Класс круга, который наследует класс point
+class Circle : virtual public Point {
+private:
+    float r; //радиус круга
+
+public:
+    Circle() : Point(), r(0.0f) {}
+    Circle(float x_, float y_, float r_) : Point(x_, y_), r(r_) {}
+    virtual ~Circle() = default;
+    //изменяем радиус или возвращаем его
+    float getR() const { return r; }
+    void setR(float r_) { r = r_; }
+
+    //Вычисляем площадь круга в основании
+    float area() const {
+        return 3.14159265358979323846f * r * r;
+    }
+    //выводим данные о заданном нами круге
+    void print() const override {
+        std::cout << "Circle(" << getX() << ", " << getY()
+                  << ", r=" << r << ")";
+    }
+};
+
+//Класс пирамиды, наследует circle
+class Pyramid : public Circle {
+private:
+    float h; //длина высоты конуса
+
+public:
+    Pyramid() : Point(), Circle(), h(0.0f) {}
+    Pyramid(float x_, float y_, float r_, float h_)
+        : Point(x_, y_), Circle(x_, y_, r_), h(h_) {}
+    virtual ~Pyramid() = default;
+
+    float getH() const { return h; } //возвращаем длину высоты
+    void setH(float h_) { h = h_; } //меняем значение высоты
+
+    //вычисляем объем конуса
+    float volume() const {
+        return (1.0f / 3.0f) * area() * h;
+    }
+    //выводим информацию о пирамиде
+    void print() const override {
+        std::cout << "Pyramid(" << getX() << ", " << getY()
+                  << ", r=" << getR() << ", h=" << h << ")";
+    }
+};
+
+//читаем пирамиды из файла, где на вход получаем имя файла
+std::vector<Pyramid> readPyramidsFromFile(const std::string& filename) {
+    std::vector<Pyramid> pyramids;
+    std::ifstream file(filename);
+    //проверяем файл на корректность
+    if (!file.is_open()) {
+        std::cerr << "Cannot open file: " << filename << "\n";
+        return pyramids;
+    }
+    //получаем значения для конуса из файла
+    float x, y, r, h;
+    while (file >> x >> y >> r >> h) {
+        pyramids.emplace_back(x, y, r, h);
+    }
+
+    file.close();
+    return pyramids;
+}
+//функция для визуализации пирамид в гнуплоте через консоль
+void visualizePyramids(const std::vector<Pyramid>& pyramids) {
+    std::ofstream script("pyramids.gnuplot");
+    if (!script.is_open()) {
+        std::cerr << "Cannot create gnuplot script\n";
+        return;
+    }
+
+    script << "set terminal png size 1400,1000\n";
+    script << "set output 'pyramids.png'\n";
+    script << "set title '3D Landscape of Pyramids'\n";
+    script << "set xlabel 'X'\n";
+    script << "set ylabel 'Y'\n";
+    script << "set zlabel 'Z'\n";
+    script << "set grid\n";
+    script << "set view 60, 30, 1, 1\n";
+    script << "set hidden3d\n";
+    script << "set xyplane at 0\n";
+
+    //Границы пирамиды
+    // Если вектор пирамид не пуст — вычисляем границы для осей X, Y, Z.
+// Если пуст, этот блок пропускается, и gnuplot сам подберёт диапазоны
+// (но тогда он может показать пустой график или мусор).
+if (!pyramids.empty()) {
+
+    // Инициализируем min/max значениями первой пирамиды.
+    // Для X и Y берём не только центр (getX/getY), но и радиус (getR),
+    // потому что основание пирамиды — это окружность радиуса r,
+    // и она выходит за пределы центральной точки.
+    float minX = pyramids[0].getX() - pyramids[0].getR();
+    float maxX = pyramids[0].getX() + pyramids[0].getR();
+    float minY = pyramids[0].getY() - pyramids[0].getR();
+    float maxY = pyramids[0].getY() + pyramids[0].getR();
+
+    // По Z нижняя граница всегда 0 (основание на плоскости z = 0),
+    // а верхняя — это высота первой пирамиды.
+    float maxZ = pyramids[0].getH();
+
+    // Проходим по всем остальным пирамидам и расширяем границы,
+    // если очередная пирамида выходит за текущие пределы.
+    for (const auto& p : pyramids) {
+        // X: учитываем и центр, и радиус (левый и правый край основания)
+        minX = std::min(minX, p.getX() - p.getR());
+        maxX = std::max(maxX, p.getX() + p.getR());
+
+        // Y: аналогично — центр ± радиус
+        minY = std::min(minY, p.getY() - p.getR());
+        maxY = std::max(maxY, p.getY() + p.getR());
+
+        // Z: берём максимум по всем высотам
+        maxZ = std::max(maxZ, p.getH());
+    }
+
+    // Добавляем отступы по краям, чтобы пирамиды не упирались в рамку графика.
+    // Формула: 20% от размаха + 1 единица (на случай, если все пирамиды
+    // находятся в одной точке и размах равен нулю).
+    float marginX = (maxX - minX) * 0.2f + 1.0f;
+    float marginY = (maxY - minY) * 0.2f + 1.0f;
+
+    // Записываем в gnuplot-скрипт команды установки диапазонов осей.
+    // Синтаксис: set xrange [min:max]
+    script << "set xrange [" << (minX - marginX) << ":"
+           << (maxX + marginX) << "]\n";
+
+    script << "set yrange [" << (minY - marginY) << ":"
+           << (maxY + marginY) << "]\n";
+
+    // По Z: от 0 (плоскость основания) до maxZ с запасом 20%,
+    // чтобы вершина самой высокой пирамиды не упиралась в верхнюю грань.
+    script << "set zrange [0:" << (maxZ * 1.2f) << "]\n";
+}
+    // Отключаем автозаголовки для датасетов
+    script << "set style data lines\n";
+
+    const int N = 40; //генерируем N точек на окружности-основании пирамиды, чтобы визуализировать конус
+    const float PI = 3.14159265358979323846f; //число пи
+
+    for (size_t i = 0; i < pyramids.size(); ++i) {
+        const auto& p = pyramids[i];
+        float cx = p.getX();
+        float cy = p.getY();
+        float r  = p.getR();
+        float h  = p.getH();
+
+        script << "$pyr" << i << " << EOD\n";
+
+        // Боковые грани
+        for (int k = 0; k < N; ++k) {
+            float a1 = 2.0f * PI * k / N;
+            float a2 = 2.0f * PI * (k + 1) / N;
+
+            float x1 = cx + r * std::cos(a1);
+            float y1 = cy + r * std::sin(a1);
+            float x2 = cx + r * std::cos(a2);
+            float y2 = cy + r * std::sin(a2);
+
+            script << x1 << " " << y1 << " 0\n";
+            script << x2 << " " << y2 << " 0\n";
+            script << cx << " " << cy << " " << h << "\n";
+            script << "\n";  // разделитель
+        }
+
+        // Основание
+        for (int k = 0; k < N; ++k) {
+            float a = 2.0f * PI * k / N;
+            float x = cx + r * std::cos(a);
+            float y = cy + r * std::sin(a);
+            script << x << " " << y << " 0\n";
+        }
+        script << "\n";
+
+        script << "EOD\n";
+    }
+
+    // Строим график
+    script << "splot "; //для plot-а 3D объектов
+    for (size_t i = 0; i < pyramids.size(); ++i) {
+        if (i > 0) script << ", ";
+        script << "$pyr" << i
+               << " using 1:2:3 with polygons "
+               << "fc rgb 'steelblue' "
+               << "title 'Pyramid " << (i + 1) << "'";
+    }
+    script << "\n";
+
+    script.close();
+
+    int result = std::system("\"C:\\Program Files\\gnuplot\\bin\\gnuplot.exe\" pyramids.gnuplot");
+    if (result == 0) {
+        std::cout << "3D visualization saved to pyramids.png\n";
+    } else {
+        std::cerr << "Error running gnuplot\n";
+    }
+}
+
+int main() {
+    //тесты
+    std::ofstream testFile("pyramids.txt");
+    testFile << "10 0 2 3\n";
+    testFile << "50 3 1.5 4\n";
+    testFile << "-10 25 2.5 2\n";
+    testFile << "2 -2 1 5\n";
+    testFile.close();
+
+    // Читаем данные из файла
+    std::vector<Pyramid> pyramids = readPyramidsFromFile("pyramids.txt");
+
+    // Печатаем информацию о каждой пирамиде из файла
+    std::cout << "Pyramids read: " << pyramids.size() << "\n\n";
+    for (size_t i = 0; i < pyramids.size(); ++i) {
+        const auto& p = pyramids[i];
+        std::cout << "Pyramid " << i + 1 << ":\n";
+        p.print();
+        std::cout << "\n";
+        std::cout << "  Base area: " << p.area() << "\n";
+        std::cout << "  Volume: " << p.volume() << "\n\n";
+    }
+
+    //визуализация пирамид
+    visualizePyramids(pyramids);
+
+    return 0;
+}
